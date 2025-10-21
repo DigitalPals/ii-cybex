@@ -1,0 +1,37 @@
+#!/bin/bash
+
+screensaver_in_focus() {
+  hyprctl activewindow -j | jq -e '.class == "Screensaver"' >/dev/null 2>&1
+}
+
+exit_screensaver() {
+  hyprctl keyword cursor:invisible false
+  pkill -x tte 2>/dev/null
+  pkill -f "kitty.*Screensaver" 2>/dev/null
+  exit 0
+}
+
+trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+
+hyprctl keyword cursor:invisible true &>/dev/null
+
+# List of available tte effects
+EFFECTS=(beams binarypath blackhole bouncyballs bubbles burn colorshift crumble decrypt errorcorrect expand fireworks highlight laseretch matrix middleout orbittingvolley overflow pour print rain randomsequence rings scattered slice slide spotlights spray swarm sweep synthgrid unstable vhstape waves wipe)
+
+while true; do
+  # Pick a random effect
+  effect=${EFFECTS[$RANDOM % ${#EFFECTS[@]}]}
+
+  tte -i ~/.config/cybex/branding/screensaver.txt \
+    --frame-rate 240 --canvas-width 0 --canvas-height $(($(tput lines) - 2)) --anchor-canvas c --anchor-text c \
+    "$effect" &
+
+  # Wait for tte to complete or for user input
+  tte_pid=$!
+  while kill -0 $tte_pid 2>/dev/null; do
+    # Exit on any keypress
+    if read -n 1 -t 1; then
+      exit_screensaver
+    fi
+  done
+done

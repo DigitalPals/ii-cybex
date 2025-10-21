@@ -1,0 +1,13 @@
+# Waycorner configuration for Cybex
+# Bottom-left corner: Launch screensaver
+# Top-right corner: Lock screen (password required)
+
+[screensaver-corner]
+enter_command = ["cybex-launch-screensaver", "force"]
+locations = ["bottom_left"]
+timeout_ms = 100
+
+[lock-corner]
+enter_command = ["loginctl", "lock-session"]
+locations = ["top_right"]
+timeout_ms = 100

@@ -429,7 +429,30 @@ if [ "$UNINSTALL_MODE" = true ]; then
     if [ "$INSTALL_SCREENSAVER" = true ]; then
         print_header "Removing Custom Screensaver"
 
-        SCREENSAVER_DEST="$HOME/.config/omarchy/branding/screensaver.txt"
+        # Remove screensaver scripts
+        SCREENSAVER_SCRIPTS=(
+            "cybex-launch-screensaver"
+            "cybex-cmd-screensaver"
+            "cybex-toggle-screensaver"
+        )
+
+        for script in "${SCREENSAVER_SCRIPTS[@]}"; do
+            if [ -f "$HOME/.local/bin/$script" ]; then
+                print_step "Removing $script..."
+                rm "$HOME/.local/bin/$script"
+                print_success "$script removed"
+            fi
+        done
+
+        # Remove screensaver config directory
+        if [ -d "$HOME/.config/cybex/screensaver" ]; then
+            print_step "Removing screensaver config directory..."
+            rm -rf "$HOME/.config/cybex/screensaver"
+            print_success "Screensaver config directory removed"
+        fi
+
+        # Remove screensaver.txt
+        SCREENSAVER_DEST="$HOME/.config/cybex/branding/screensaver.txt"
 
         if [ -f "$SCREENSAVER_DEST" ]; then
             # Find most recent backup
@@ -447,6 +470,70 @@ if [ "$UNINSTALL_MODE" = true ]; then
         else
             print_skip "Custom screensaver not found"
         fi
+
+        # Remove state file if it exists
+        if [ -f "$HOME/.local/state/cybex/toggles/screensaver-off" ]; then
+            rm "$HOME/.local/state/cybex/toggles/screensaver-off"
+        fi
+
+        # Restore hypridle.conf backup if it exists
+        HYPRIDLE_DEST="$HOME/.config/hypr/hypridle.conf"
+        if [ -f "$HYPRIDLE_DEST" ]; then
+            BACKUP=$(ls -t "${HYPRIDLE_DEST}.bak."* 2>/dev/null | head -1)
+
+            if [ -n "$BACKUP" ]; then
+                print_step "Restoring hypridle.conf backup from $BACKUP..."
+                cp "$BACKUP" "$HYPRIDLE_DEST"
+                print_success "hypridle.conf backup restored"
+
+                # Restart hypridle to apply restored config
+                if pgrep -x hypridle >/dev/null 2>&1; then
+                    print_step "Restarting hypridle..."
+                    pkill -x hypridle
+                    hypridle &>/dev/null &
+                    print_success "hypridle restarted"
+                fi
+            else
+                print_skip "No hypridle.conf backup found to restore"
+            fi
+        fi
+
+        # Stop and remove waycorner
+        if pgrep -x waycorner >/dev/null 2>&1; then
+            print_step "Stopping waycorner..."
+            pkill -x waycorner
+            print_success "waycorner stopped"
+        fi
+
+        # Remove waycorner config
+        WAYCORNER_DEST="$HOME/.config/waycorner/config.toml"
+        if [ -f "$WAYCORNER_DEST" ]; then
+            BACKUP=$(ls -t "${WAYCORNER_DEST}.bak."* 2>/dev/null | head -1)
+
+            if [ -n "$BACKUP" ]; then
+                print_step "Restoring waycorner backup from $BACKUP..."
+                cp "$BACKUP" "$WAYCORNER_DEST"
+                print_success "waycorner config backup restored"
+            else
+                print_step "Removing waycorner config..."
+                rm "$WAYCORNER_DEST"
+                # Remove directory if empty
+                rmdir "$HOME/.config/waycorner" 2>/dev/null || true
+                print_success "waycorner config removed"
+            fi
+        fi
+
+        # Remove waycorner from Hyprland autostart
+        HYPRLAND_EXECS="$HOME/.config/hypr/custom/execs.conf"
+        if [ -f "$HYPRLAND_EXECS" ]; then
+            if grep -q "exec-once = waycorner" "$HYPRLAND_EXECS"; then
+                print_step "Removing waycorner from Hyprland autostart..."
+                remove_script_lines "$HYPRLAND_EXECS" "Hot corner screensaver"
+                print_success "waycorner removed from autostart"
+            fi
+        fi
+
+        print_success "Screensaver uninstalled"
     fi
 
     # Uninstall Plymouth theme
@@ -690,7 +777,7 @@ if [ "$INSTALL_PACKAGES" = true ] || [ "$INSTALL_MAINLINE" = true ] || [ "$INSTA
 fi
 
 # Components that require internet
-if [ "$INSTALL_PACKAGES" = true ] || [ "$INSTALL_CLAUDE" = true ] || [ "$INSTALL_CODEX" = true ] || [ "$INSTALL_MAINLINE" = true ] || [ "$INSTALL_MACOS_KEYS" = true ] || [ "$INSTALL_AUTO_TILE" = true ] || [ "$INSTALL_WAYCORNER" = true ]; then
+if [ "$INSTALL_PACKAGES" = true ] || [ "$INSTALL_CLAUDE" = true ] || [ "$INSTALL_CODEX" = true ] || [ "$INSTALL_MAINLINE" = true ] || [ "$INSTALL_MACOS_KEYS" = true ] || [ "$INSTALL_AUTO_TILE" = true ] || [ "$INSTALL_SCREENSAVER" = true ]; then
     NEED_INTERNET=true
 fi
 
@@ -1030,8 +1117,37 @@ fi
 if [ "$INSTALL_SCREENSAVER" = true ]; then
     print_header "Configuring Screensaver"
 
+    # Install required packages
+    SCREENSAVER_PACKAGES=("jq")
+
+    # Check if tte is installed via yay
+    if command_exists yay; then
+        if ! command_exists tte; then
+            print_step "Installing tte (terminal text effects)..."
+            yay -S --noconfirm python-terminaltexteffects
+            print_success "tte installed"
+        else
+            print_skip "tte is already installed"
+        fi
+    else
+        print_error "yay is not installed. Cannot install tte package."
+        print_error "Please install yay first, then run: yay -S python-terminaltexteffects"
+    fi
+
+    # Install jq if not already installed
+    for pkg in "${SCREENSAVER_PACKAGES[@]}"; do
+        if package_installed "$pkg"; then
+            print_skip "$pkg is already installed"
+        else
+            print_step "Installing $pkg..."
+            sudo pacman -S --noconfirm "$pkg"
+            print_success "$pkg installed"
+        fi
+    done
+
+    # Install screensaver.txt
     SCREENSAVER_SRC="$SCRIPT_DIR/config/screensaver/screensaver.txt"
-    SCREENSAVER_DEST="$HOME/.config/omarchy/branding/screensaver.txt"
+    SCREENSAVER_DEST="$HOME/.config/cybex/branding/screensaver.txt"
 
     if [ ! -f "$SCREENSAVER_SRC" ]; then
         print_error "Source screensaver.txt not found at $SCREENSAVER_SRC"
@@ -1044,34 +1160,211 @@ if [ "$INSTALL_SCREENSAVER" = true ]; then
             # Use diff if cmp is not available
             if command_exists cmp; then
                 if cmp -s "$SCREENSAVER_SRC" "$SCREENSAVER_DEST"; then
-                    print_skip "Screensaver is already up to date"
+                    print_skip "Screensaver text is already up to date"
                 else
                     print_step "Backing up existing screensaver.txt..."
                     BACKUP_FILE=$(create_backup "$SCREENSAVER_DEST")
                     print_success "Backup created at $BACKUP_FILE"
                     print_step "Updating screensaver.txt..."
                     cp "$SCREENSAVER_SRC" "$SCREENSAVER_DEST"
-                    print_success "Screensaver updated"
+                    print_success "Screensaver text updated"
                 fi
             else
                 # Fallback to diff if cmp is not available
                 if diff -q "$SCREENSAVER_SRC" "$SCREENSAVER_DEST" >/dev/null 2>&1; then
-                    print_skip "Screensaver is already up to date"
+                    print_skip "Screensaver text is already up to date"
                 else
                     print_step "Backing up existing screensaver.txt..."
                     BACKUP_FILE=$(create_backup "$SCREENSAVER_DEST")
                     print_success "Backup created at $BACKUP_FILE"
                     print_step "Updating screensaver.txt..."
                     cp "$SCREENSAVER_SRC" "$SCREENSAVER_DEST"
-                    print_success "Screensaver updated"
+                    print_success "Screensaver text updated"
                 fi
             fi
         else
             print_step "Copying screensaver.txt to $SCREENSAVER_DEST..."
             cp "$SCREENSAVER_SRC" "$SCREENSAVER_DEST"
-            print_success "Screensaver configured"
+            print_success "Screensaver text configured"
         fi
     fi
+
+    # Install Alacritty screensaver config
+    ALACRITTY_SCREENSAVER_SRC="$SCRIPT_DIR/config/screensaver/alacritty-screensaver.toml"
+    ALACRITTY_SCREENSAVER_DEST="$HOME/.config/cybex/screensaver/alacritty-screensaver.toml"
+
+    if [ ! -f "$ALACRITTY_SCREENSAVER_SRC" ]; then
+        print_error "Source alacritty-screensaver.toml not found at $ALACRITTY_SCREENSAVER_SRC"
+    else
+        mkdir -p "$(dirname "$ALACRITTY_SCREENSAVER_DEST")"
+
+        if [ -f "$ALACRITTY_SCREENSAVER_DEST" ]; then
+            if command_exists cmp && cmp -s "$ALACRITTY_SCREENSAVER_SRC" "$ALACRITTY_SCREENSAVER_DEST"; then
+                print_skip "Alacritty screensaver config is already up to date"
+            else
+                print_step "Updating Alacritty screensaver config..."
+                cp "$ALACRITTY_SCREENSAVER_SRC" "$ALACRITTY_SCREENSAVER_DEST"
+                print_success "Alacritty screensaver config updated"
+            fi
+        else
+            print_step "Installing Alacritty screensaver config..."
+            cp "$ALACRITTY_SCREENSAVER_SRC" "$ALACRITTY_SCREENSAVER_DEST"
+            print_success "Alacritty screensaver config installed"
+        fi
+    fi
+
+    # Install screensaver scripts to ~/.local/bin
+    mkdir -p "$HOME/.local/bin"
+
+    SCREENSAVER_SCRIPTS=(
+        "cybex-launch-screensaver"
+        "cybex-cmd-screensaver"
+        "cybex-toggle-screensaver"
+    )
+
+    for script in "${SCREENSAVER_SCRIPTS[@]}"; do
+        SCRIPT_SRC="$SCRIPT_DIR/scripts/$script"
+        SCRIPT_DEST="$HOME/.local/bin/$script"
+
+        if [ ! -f "$SCRIPT_SRC" ]; then
+            print_error "Source $script not found at $SCRIPT_SRC"
+            continue
+        fi
+
+        if [ -f "$SCRIPT_DEST" ]; then
+            if command_exists cmp && cmp -s "$SCRIPT_SRC" "$SCRIPT_DEST"; then
+                print_skip "$script is already up to date"
+            else
+                print_step "Updating $script..."
+                cp "$SCRIPT_SRC" "$SCRIPT_DEST"
+                chmod +x "$SCRIPT_DEST"
+                print_success "$script updated"
+            fi
+        else
+            print_step "Installing $script..."
+            cp "$SCRIPT_SRC" "$SCRIPT_DEST"
+            chmod +x "$SCRIPT_DEST"
+            print_success "$script installed"
+        fi
+    done
+
+    # Install hypridle configuration for automatic screensaver activation
+    HYPRIDLE_SRC="$SCRIPT_DIR/config/hypridle/hypridle.conf"
+    HYPRIDLE_DEST="$HOME/.config/hypr/hypridle.conf"
+
+    if [ ! -f "$HYPRIDLE_SRC" ]; then
+        print_error "Source hypridle.conf not found at $HYPRIDLE_SRC"
+    else
+        mkdir -p "$(dirname "$HYPRIDLE_DEST")"
+
+        if [ -f "$HYPRIDLE_DEST" ]; then
+            print_step "Backing up existing hypridle.conf..."
+            BACKUP_FILE=$(create_backup "$HYPRIDLE_DEST")
+            print_success "Backup created at $BACKUP_FILE"
+            print_step "Updating hypridle.conf with screensaver configuration..."
+            cp "$HYPRIDLE_SRC" "$HYPRIDLE_DEST"
+            print_success "hypridle.conf updated"
+        else
+            print_step "Installing hypridle.conf for automatic screensaver..."
+            cp "$HYPRIDLE_SRC" "$HYPRIDLE_DEST"
+            print_success "hypridle.conf installed"
+        fi
+
+        # Restart hypridle if it's running to apply changes
+        if pgrep -x hypridle >/dev/null 2>&1; then
+            print_step "Restarting hypridle to apply configuration..."
+            pkill -x hypridle
+            hypridle &>/dev/null &
+            print_success "hypridle restarted"
+        else
+            print_step "Starting hypridle..."
+            hypridle &>/dev/null &
+            print_success "hypridle started"
+        fi
+    fi
+
+    # Install waycorner for hot corner activation
+    if command_exists yay; then
+        if ! command_exists waycorner; then
+            print_step "Installing waycorner (hot corners for Wayland)..."
+            yay -S --noconfirm waycorner
+            print_success "waycorner installed"
+        else
+            print_skip "waycorner is already installed"
+        fi
+    else
+        print_error "yay is not installed. Cannot install waycorner package."
+        print_error "Please install yay first, then run: yay -S waycorner"
+    fi
+
+    # Install waycorner configuration
+    WAYCORNER_SRC="$SCRIPT_DIR/config/waycorner/config.toml"
+    WAYCORNER_DEST="$HOME/.config/waycorner/config.toml"
+
+    if [ ! -f "$WAYCORNER_SRC" ]; then
+        print_error "Source waycorner config not found at $WAYCORNER_SRC"
+    else
+        mkdir -p "$(dirname "$WAYCORNER_DEST")"
+
+        if [ -f "$WAYCORNER_DEST" ]; then
+            print_step "Backing up existing waycorner config..."
+            BACKUP_FILE=$(create_backup "$WAYCORNER_DEST")
+            print_success "Backup created at $BACKUP_FILE"
+            print_step "Updating waycorner config..."
+            cp "$WAYCORNER_SRC" "$WAYCORNER_DEST"
+            print_success "waycorner config updated"
+        else
+            print_step "Installing waycorner config..."
+            cp "$WAYCORNER_SRC" "$WAYCORNER_DEST"
+            print_success "waycorner config installed"
+        fi
+
+        # Start waycorner if it's installed
+        if command_exists waycorner; then
+            # Kill existing waycorner instance if running
+            if pgrep -x waycorner >/dev/null 2>&1; then
+                print_step "Restarting waycorner..."
+                pkill -x waycorner
+                waycorner &>/dev/null &
+                print_success "waycorner restarted"
+            else
+                print_step "Starting waycorner..."
+                waycorner &>/dev/null &
+                print_success "waycorner started"
+            fi
+
+            # Add to Hyprland autostart if custom/execs.conf exists
+            HYPRLAND_EXECS="$HOME/.config/hypr/custom/execs.conf"
+            if [ -f "$HYPRLAND_EXECS" ]; then
+                if grep -q "exec-once = waycorner" "$HYPRLAND_EXECS"; then
+                    print_skip "waycorner already in Hyprland autostart"
+                else
+                    print_step "Adding waycorner to Hyprland autostart..."
+                    echo "" >> "$HYPRLAND_EXECS"
+                    echo "# Hot corner screensaver activation (bottom-left)" >> "$HYPRLAND_EXECS"
+                    echo "exec-once = waycorner" >> "$HYPRLAND_EXECS"
+                    print_success "waycorner added to Hyprland autostart"
+                fi
+            fi
+        fi
+    fi
+
+    # Add ~/.local/bin to PATH if needed
+    add_local_bin_to_path
+
+    echo ""
+    echo -e "${CYAN}Screensaver installation complete!${NC}"
+    echo -e "${YELLOW}Automatic activation:${NC}"
+    echo -e "  • After 2.5 minutes idle: Screensaver launches"
+    echo -e "  • After 5 minutes idle: Screen locks (password required)"
+    echo -e "  • After 5.5 minutes idle: Display turns off"
+    echo -e "  • ${BOLD}Move mouse to bottom-left corner: Launch screensaver${NC}"
+    echo -e "  • ${BOLD}Move mouse to top-right corner: Lock screen${NC}"
+    echo ""
+    echo -e "${YELLOW}Manual control:${NC}"
+    echo -e "  • Launch screensaver: ${CYAN}cybex-launch-screensaver${NC}"
+    echo -e "  • Toggle on/off: ${CYAN}cybex-toggle-screensaver${NC}"
+    echo ""
 fi
 
 ################################################################################

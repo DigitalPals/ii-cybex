@@ -119,7 +119,18 @@ Installs Anthropic's Claude Code CLI globally to `~/.local/bin`. Automatically a
 Installs OpenAI's Codex command-line interface for AI-assisted coding.
 
 ### Custom Screensaver
-Deploys a personalized ASCII art screensaver to `~/.config/omarchy/branding/screensaver.txt`.
+Installs a complete terminal-based screensaver system using `tte` (terminal text effects):
+- ASCII art screensaver file deployed to `~/.config/cybex/branding/screensaver.txt`
+- Uses Kitty terminal emulator to display screensaver
+- Three helper scripts: `cybex-launch-screensaver`, `cybex-cmd-screensaver`, `cybex-toggle-screensaver`
+- Animated ASCII art with random effects from the `tte` package
+- Configures hypridle for automatic activation:
+  - 2.5 minutes idle: Screensaver launches
+  - 5 minutes idle: Screen locks (password required)
+  - 5.5 minutes idle: Display turns off
+- Hot corner activation via waycorner:
+  - Move mouse to bottom-left corner: Launch screensaver instantly
+  - Move mouse to top-right corner: Lock screen (password required)
 
 ### Plymouth Theme (Cybex)
 Installs the Cybex boot splash theme and rebuilds the initramfs. **Requires reboot** to take effect.
